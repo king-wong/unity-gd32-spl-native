@@ -2,6 +2,19 @@
 #include "gd32f3x0.h"
 #include <stdio.h>
 
+/* delay routines for initial startup delay */
+volatile static unsigned long delay;
+void SysTick_Handler(void) {
+    if (0U != delay)
+        delay--;
+}
+void startup_delay(unsigned long ms) {
+    SysTick_Config(SystemCoreClock / 1000U);
+    NVIC_SetPriority(SysTick_IRQn, 0x00U);
+    delay = ms;
+    while (0U != delay);
+}
+
 /* settings for USART0 alternate settings, TX = PB6, RX = PB7 */
 #define RCU_GPIO RCU_GPIOB
 #define RCU_UART RCU_USART0
@@ -9,9 +22,8 @@
 #define UART_TX_RX_GPIO GPIOB
 #define UART_TX_GPIO_PIN GPIO_PIN_6
 #define UART_RX_GPIO_PIN GPIO_PIN_7
-
-#define USART0_RDATA_ADDRESS ((uint32_t)0x40013824)
-#define USART0_TDATA_ADDRESS ((uint32_t)0x40013828)
+#define UART_TX_AF  GPIO_AF_0 /* PB6 AF0 is USART0_TX */
+#define UART_RX_AF  GPIO_AF_0 /* PB7 AF0 is USART0_RX */
 
 #define BAUD_RATE 115200U
 
@@ -20,7 +32,6 @@
 #ifdef PRINTF_VIA_SEMIHOSTING
     extern void initialise_monitor_handles(void);
 #endif
-
 
 void unityOutputStart()
 {
@@ -53,16 +64,23 @@ void unityOutputStart()
     usart_enable(USART);
 #endif
 
+    // if we don't want to manually press the reset the button, we have to have a little delay here
+    // otherwise the output will be over before PlatformIO even opened the serial port...
+    // for slower systems, this value may need to be higher.
+    startup_delay(2000);
 }
 
 void unityOutputChar(char c)
 {
-     usart_data_transmit(USART, c);
+    usart_data_transmit(USART, c);
+    while(usart_flag_get(USART, USART_FLAG_TBE) != SET) {}
 }
 
-void unityOutputFlush() {}
+void unityOutputFlush() {
+}
 
 void unityOutputComplete()
 {
-
+    /* we could deinitialize the USART here if we cared */
+    /* usart_disable(USART); */
 }
